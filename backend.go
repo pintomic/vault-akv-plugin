@@ -117,13 +117,13 @@ func (b *backend) handleExistenceCheck(ctx context.Context, req *logical.Request
 	return out != nil, nil
 }
 
-func (b *backend) handleRead(_ context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+func (b *backend) handleRead(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	if req.ClientToken == "" {
 		return nil, fmt.Errorf("client token empty")
 	}
 
-	path := data.Get("path").(string)
-	if path == "" {
+	secretPath := data.Get("path").(string)
+	if secretPath == "" {
 		const errMsg = "no secret path specified"
 		b.Logger().Error(errMsg)
 		return logical.ErrorResponse(errMsg), errors.New(errMsg)
@@ -135,7 +135,7 @@ func (b *backend) handleRead(_ context.Context, req *logical.Request, data *fram
 	// you need to run
 	// $ vault read vault-akv-plugin/anjuna-key-vault/hello
 
-	pathComponents := strings.Split(path, "/")
+	pathComponents := strings.Split(secretPath, "/")
 	if len(pathComponents) != 2 {
 		const errMsg = "invalid path specified"
 		b.Logger().Error(errMsg)
@@ -147,7 +147,7 @@ func (b *backend) handleRead(_ context.Context, req *logical.Request, data *fram
 
 	b.Logger().Debug(fmt.Sprintf("Fetching secret %s from vault %s", secretName, vaultName))
 
-	secretResp, err := b.akvClient.GetSecret(context.Background(), "https://"+vaultName+".vault.azure.net", secretName, "")
+	secretResp, err := b.akvClient.GetSecret(ctx, "https://"+vaultName+".vault.azure.net", secretName, "")
 	if err != nil {
 		return logical.ErrorResponse(err.Error()), errors.New(err.Error())
 	}
@@ -176,7 +176,7 @@ func getFirstKeyValueFromMap(m map[string]interface{}) (key string, value string
 	return keys[0], m[keys[0]].(string)
 }
 
-func (b *backend) handleWrite(_ context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+func (b *backend) handleWrite(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	if req.ClientToken == "" {
 		return nil, fmt.Errorf("client token empty")
 	}
@@ -207,7 +207,7 @@ func (b *backend) handleWrite(_ context.Context, req *logical.Request, data *fra
 
 	var secParams keyvault.SecretSetParameters
 	secParams.Value = &value
-	newBundle, err := b.akvClient.SetSecret(context.Background(), "https://"+vaultName+".vault.azure.net", secretName, secParams)
+	newBundle, err := b.akvClient.SetSecret(ctx, "https://"+vaultName+".vault.azure.net", secretName, secParams)
 	if err != nil {
 		return logical.ErrorResponse(err.Error()), errors.New(err.Error())
 	}
@@ -216,13 +216,13 @@ func (b *backend) handleWrite(_ context.Context, req *logical.Request, data *fra
 	return nil, nil
 }
 
-func (b *backend) handleDelete(_ context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+func (b *backend) handleDelete(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	if req.ClientToken == "" {
 		return nil, fmt.Errorf("client token empty")
 	}
 
-	path := data.Get("path").(string)
-	if path == "" {
+	secretPath := data.Get("path").(string)
+	if secretPath == "" {
 		const errMsg = "no secret path specified"
 		b.Logger().Error(errMsg)
 		return logical.ErrorResponse(errMsg), errors.New(errMsg)
@@ -234,7 +234,7 @@ func (b *backend) handleDelete(_ context.Context, req *logical.Request, data *fr
 	// you need to run
 	// $ vault delete vault-akv-plugin/anjuna-key-vault/hello
 
-	pathComponents := strings.Split(path, "/")
+	pathComponents := strings.Split(secretPath, "/")
 	if len(pathComponents) != 2 {
 		const errMsg = "invalid path specified"
 		b.Logger().Error(errMsg)
@@ -246,7 +246,7 @@ func (b *backend) handleDelete(_ context.Context, req *logical.Request, data *fr
 
 	b.Logger().Debug(fmt.Sprintf("Deleting secret %s from vault %s", secretName, vaultName))
 
-	_, err := b.akvClient.DeleteSecret(context.Background(), "https://"+vaultName+".vault.azure.net", secretName)
+	_, err := b.akvClient.DeleteSecret(ctx, "https://"+vaultName+".vault.azure.net", secretName)
 	if err != nil {
 		return logical.ErrorResponse(err.Error()), err
 	}
@@ -255,7 +255,7 @@ func (b *backend) handleDelete(_ context.Context, req *logical.Request, data *fr
 	return nil, nil
 }
 
-func (b *backend) handleList(_ context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+func (b *backend) handleList(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	if req.ClientToken == "" {
 		return nil, fmt.Errorf("client token empty")
 	}
@@ -263,7 +263,7 @@ func (b *backend) handleList(_ context.Context, req *logical.Request, data *fram
 	vaultName := strings.TrimSuffix(data.Get("path").(string), "/")
 	b.Logger().Debug(fmt.Sprintf("Listing secrets in vault %s", vaultName))
 
-	secretList, err := b.akvClient.GetSecrets(context.Background(), "https://"+vaultName+".vault.azure.net", nil)
+	secretList, err := b.akvClient.GetSecrets(ctx, "https://"+vaultName+".vault.azure.net", nil)
 	if err != nil {
 		b.Logger().Error(err.Error())
 		return logical.ErrorResponse(err.Error()), err
