@@ -268,25 +268,26 @@ func (b *backend) handleList(ctx context.Context, req *logical.Request, data *fr
 		b.Logger().Error(err.Error())
 		return logical.ErrorResponse(err.Error()), err
 	}
+	b.Logger().Debug("Looping over secrets from key vault")
 
 	// group by ContentType
-	secWithType := make(map[string][]string)
-	secWithoutType := make([]string, 1)
+	//secWithType := make(map[string][]string)
+	//secWithoutType := make([]string, 1)
 	secrets := make([]string, 0)
 	for _, secret := range secretList.Values() {
-		if secret.ContentType != nil {
-			_, exists := secWithType[*secret.ContentType]
-			if exists {
-				secWithType[*secret.ContentType] = append(secWithType[*secret.ContentType], path.Base(*secret.ID))
-			} else {
-				tempSlice := make([]string, 1)
-				tempSlice[0] = path.Base(*secret.ID)
-				secWithType[*secret.ContentType] = tempSlice
-			}
-		} else {
-			secWithoutType = append(secWithoutType, path.Base(*secret.ID))
-		}
-		secWithoutType = append(secWithoutType, path.Base(*secret.ID))
+		//if secret.ContentType != nil {
+		//	_, exists := secWithType[*secret.ContentType]
+		//	if exists {
+		//		secWithType[*secret.ContentType] = append(secWithType[*secret.ContentType], path.Base(*secret.ID))
+		//	} else {
+		//		tempSlice := make([]string, 1)
+		//		tempSlice[0] = path.Base(*secret.ID)
+		//		secWithType[*secret.ContentType] = tempSlice
+		//	}
+		//} else {
+		//	secWithoutType = append(secWithoutType, path.Base(*secret.ID))
+		//}
+		secrets = append(secrets, path.Base(*secret.ID))
 	}
 
 	b.Logger().Debug("Retrieved secrets from key vault")
