@@ -8,10 +8,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Azure/azure-sdk-for-go/profiles/latest/keyvault/keyvault"
+	kvauth "github.com/Azure/azure-sdk-for-go/services/keyvault/auth"
 	"github.com/hashicorp/errwrap"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/logical"
+	"os"
+	"path"
 	"strings"
 )
 
@@ -37,20 +41,22 @@ func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend,
 // backend wraps the backend framework and adds an Azure Key Vault client
 type backend struct {
 	*framework.Backend
-	akvClient *keyvaultClient
+	akvClient *keyvault.BaseClient
 }
 
 func Backend(_ *logical.BackendConfig) *backend {
 	var b backend
 	logger := hclog.New(&hclog.LoggerOptions{})
 
-	akvClient, err := InitKeyvaultClient(&logger)
+	authorizer, err := kvauth.NewAuthorizerFromEnvironment()
 	if err != nil {
-		logger.Error("Failed initializing AVK client", err.Error())
-		return nil
+		fmt.Printf("unable to create vault authorizer: %v\n", err)
+		os.Exit(1)
 	}
+	basicClient := keyvault.New()
+	basicClient.Authorizer = authorizer
 
-	b.akvClient = akvClient
+	b.akvClient = &basicClient
 
 	b.Backend = &framework.Backend{
 		Help:        strings.TrimSpace(pluginHelp),
@@ -141,17 +147,18 @@ func (b *backend) handleRead(_ context.Context, req *logical.Request, data *fram
 
 	b.Logger().Debug(fmt.Sprintf("Fetching secret %s from vault %s", secretName, vaultName))
 
-	value, err := b.akvClient.GetSecret(vaultName, secretName)
+	secretResp, err := b.akvClient.GetSecret(context.Background(), "https://"+vaultName+".vault.azure.net", secretName, "")
 	if err != nil {
 		return logical.ErrorResponse(err.Error()), errors.New(err.Error())
 	}
-	if value == "" {
+
+	if *secretResp.Value == "" {
 		return nil, nil
 	}
 
 	// Generate the response
 	secretData := make(map[string]interface{}, 1)
-	secretData[secretName] = value
+	secretData[secretName] = *secretResp.Value
 
 	response := &logical.Response{
 		Data: secretData,
@@ -195,14 +202,16 @@ func (b *backend) handleWrite(_ context.Context, req *logical.Request, data *fra
 	}
 
 	_, value := getFirstKeyValueFromMap(req.Data)
-	name := splittedPath[len(splittedPath)-1]
-	b.Logger().Debug(fmt.Sprintf("Setting secret %s to %s in vault %s", name, value, vaultName))
+	secretName := splittedPath[len(splittedPath)-1]
+	b.Logger().Debug(fmt.Sprintf("Setting secret %s to %s in vault %s", secretName, value, vaultName))
 
-	// JSON encode the data
-	err := b.akvClient.SetSecret(vaultName, name, value)
+	var secParams keyvault.SecretSetParameters
+	secParams.Value = &value
+	newBundle, err := b.akvClient.SetSecret(context.Background(), "https://"+vaultName+".vault.azure.net", secretName, secParams)
 	if err != nil {
 		return logical.ErrorResponse(err.Error()), errors.New(err.Error())
 	}
+	b.Logger().Debug(fmt.Sprintf("added/updated: %s", *newBundle.ID))
 
 	return nil, nil
 }
@@ -237,10 +246,11 @@ func (b *backend) handleDelete(_ context.Context, req *logical.Request, data *fr
 
 	b.Logger().Debug(fmt.Sprintf("Deleting secret %s from vault %s", secretName, vaultName))
 
-	err := b.akvClient.DeleteSecret(vaultName, secretName)
+	_, err := b.akvClient.DeleteSecret(context.Background(), "https://"+vaultName+".vault.azure.net", secretName)
 	if err != nil {
 		return logical.ErrorResponse(err.Error()), err
 	}
+	b.Logger().Debug(fmt.Sprintf("%s deleted successfully", secretName))
 
 	return nil, nil
 }
@@ -253,10 +263,30 @@ func (b *backend) handleList(_ context.Context, req *logical.Request, data *fram
 	vaultName := strings.TrimSuffix(data.Get("path").(string), "/")
 	b.Logger().Debug(fmt.Sprintf("Listing secrets in vault %s", vaultName))
 
-	secrets, err := b.akvClient.ListSecrets(vaultName)
+	secretList, err := b.akvClient.GetSecrets(context.Background(), "https://"+vaultName+".vault.azure.net", nil)
 	if err != nil {
 		b.Logger().Error(err.Error())
 		return logical.ErrorResponse(err.Error()), err
+	}
+
+	// group by ContentType
+	secWithType := make(map[string][]string)
+	secWithoutType := make([]string, 1)
+	secrets := make([]string, 0)
+	for _, secret := range secretList.Values() {
+		if secret.ContentType != nil {
+			_, exists := secWithType[*secret.ContentType]
+			if exists {
+				secWithType[*secret.ContentType] = append(secWithType[*secret.ContentType], path.Base(*secret.ID))
+			} else {
+				tempSlice := make([]string, 1)
+				tempSlice[0] = path.Base(*secret.ID)
+				secWithType[*secret.ContentType] = tempSlice
+			}
+		} else {
+			secWithoutType = append(secWithoutType, path.Base(*secret.ID))
+		}
+		secWithoutType = append(secWithoutType, path.Base(*secret.ID))
 	}
 
 	b.Logger().Debug("Retrieved secrets from key vault")
