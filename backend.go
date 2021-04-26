@@ -255,7 +255,7 @@ func (b *backend) handleDelete(ctx context.Context, req *logical.Request, data *
 	return nil, nil
 }
 
-func (b *backend) handleList(_ context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+func (b *backend) handleList(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	if req.ClientToken == "" {
 		return nil, fmt.Errorf("client token empty")
 	}
@@ -263,7 +263,7 @@ func (b *backend) handleList(_ context.Context, req *logical.Request, data *fram
 	vaultName := strings.TrimSuffix(data.Get("path").(string), "/")
 	b.Logger().Debug(fmt.Sprintf("Listing secrets in vault %s", vaultName))
 
-	secretList, err := b.akvClient.GetSecrets(context.Background(), "https://"+vaultName+".vault.azure.net", nil)
+	secretList, err := b.akvClient.GetSecrets(ctx, "https://"+vaultName+".vault.azure.net", nil)
 	if err != nil {
 		b.Logger().Error(err.Error())
 		return logical.ErrorResponse(err.Error()), err
