@@ -255,7 +255,7 @@ func (b *backend) handleDelete(ctx context.Context, req *logical.Request, data *
 	return nil, nil
 }
 
-func (b *backend) handleList(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+func (b *backend) handleList(_ context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	if req.ClientToken == "" {
 		return nil, fmt.Errorf("client token empty")
 	}
@@ -263,30 +263,16 @@ func (b *backend) handleList(ctx context.Context, req *logical.Request, data *fr
 	vaultName := strings.TrimSuffix(data.Get("path").(string), "/")
 	b.Logger().Debug(fmt.Sprintf("Listing secrets in vault %s", vaultName))
 
-	secretList, err := b.akvClient.GetSecrets(ctx, "https://"+vaultName+".vault.azure.net", nil)
+	secretList, err := b.akvClient.GetSecrets(context.Background(), "https://"+vaultName+".vault.azure.net", nil)
 	if err != nil {
 		b.Logger().Error(err.Error())
 		return logical.ErrorResponse(err.Error()), err
 	}
 	b.Logger().Debug("Looping over secrets from key vault")
 
-	// group by ContentType
-	//secWithType := make(map[string][]string)
-	//secWithoutType := make([]string, 1)
 	secrets := make([]string, 0)
 	for _, secret := range secretList.Values() {
-		//if secret.ContentType != nil {
-		//	_, exists := secWithType[*secret.ContentType]
-		//	if exists {
-		//		secWithType[*secret.ContentType] = append(secWithType[*secret.ContentType], path.Base(*secret.ID))
-		//	} else {
-		//		tempSlice := make([]string, 1)
-		//		tempSlice[0] = path.Base(*secret.ID)
-		//		secWithType[*secret.ContentType] = tempSlice
-		//	}
-		//} else {
-		//	secWithoutType = append(secWithoutType, path.Base(*secret.ID))
-		//}
+		b.Logger().Debug("Looping over secrets from key vault %s", secret.ID)
 		secrets = append(secrets, path.Base(*secret.ID))
 	}
 
